@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Download,
@@ -24,16 +25,44 @@ export default function ReceiverView() {
     setP2PStatus,
     transferProgress,
     transferStatus,
-    receivedFile, // Get the file info from store
+    receivedFile,
   } = useAppStore();
 
+  const searchParams = useSearchParams();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Define connection logic in a reusable function
+  const startConnection = useCallback(async (joinCode) => {
+    if (joinCode.length !== 6) {
+      setError("Code must be 6 digits");
+      return;
+    }
+    setError("");
+    setLoading(true);
+
+    try {
+      // Initialize WebRTC first (Fetch TURN keys)
+      await rtcManager.initialize(joinCode, false);
+      // Join the socket room
+      socket.emit("join_room", joinCode);
+    } catch (err) {
+      setLoading(false);
+      setError("Failed to initialize connection");
+    }
+  }, []);
+
   useEffect(() => {
     if (!socket.connected) {
       socket.connect();
+    }
+
+    // AUTO-JOIN LOGIC: Check URL for ?join=XXXXXX
+    const urlCode = searchParams.get("join");
+    if (urlCode && urlCode.length === 6 && !isConnected && !loading) {
+      setCode(urlCode);
+      startConnection(urlCode);
     }
 
     socket.on("peer_joined", () => {
@@ -55,7 +84,14 @@ export default function ReceiverView() {
       socket.off("error");
       socket.off("signal");
     };
-  }, [setIsConnected, setP2PStatus]);
+  }, [
+    setIsConnected,
+    setP2PStatus,
+    searchParams,
+    isConnected,
+    loading,
+    startConnection,
+  ]);
 
   const handleCancel = () => {
     rtcManager.close();
@@ -63,34 +99,22 @@ export default function ReceiverView() {
     reset();
   };
 
-const handleJoin = async () => {
-  if (code.length !== 6) {
-    setError("Code must be 6 digits");
-    return;
-  }
-  setError("");
-  setLoading(true);
+  const handleManualJoin = () => {
+    startConnection(code);
+  };
 
-  // Initialize first (Fetch TURN keys), THEN join
-  await rtcManager.initialize(code, false);
-
-  socket.emit("join_room", code);
-};
-
-  // NEW: Handle Manual Save
   const handleSaveFile = () => {
     if (receivedFile && receivedFile.url) {
       const a = document.createElement("a");
       a.href = receivedFile.url;
       a.download = receivedFile.name;
-      document.body.appendChild(a); // Required for Firefox
+      document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     }
   };
 
   const renderCardContent = () => {
-    // 1. Transferring
     if (transferStatus === "transferring") {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6">
@@ -103,7 +127,6 @@ const handleJoin = async () => {
       );
     }
 
-    // 2. Completed -> SHOW SAVE BUTTON
     if (transferStatus === "completed") {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6 w-full">
@@ -113,8 +136,6 @@ const handleJoin = async () => {
           <p className="font-bold text-2xl text-gray-800 mb-2">
             Transfer Complete
           </p>
-
-          {/* File Info */}
           <div className="bg-gray-50 p-4 rounded-xl w-full mb-6 border border-gray-100">
             <p className="font-semibold text-gray-700 truncate text-center">
               {receivedFile?.name || "Unknown File"}
@@ -125,17 +146,13 @@ const handleJoin = async () => {
                 : ""}
             </p>
           </div>
-
           <div className="flex flex-col gap-3 w-full">
-            {/* PRIMARY BUTTON: SAVE */}
             <button
               onClick={handleSaveFile}
               className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/30"
             >
               <Save size={24} /> Save to Device
             </button>
-
-            {/* SECONDARY BUTTON: NEXT */}
             <button
               onClick={resetTransfer}
               className="w-full px-6 py-3 bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
@@ -147,7 +164,6 @@ const handleJoin = async () => {
       );
     }
 
-    // 3. Connected
     if (isConnected) {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6">
@@ -175,7 +191,6 @@ const handleJoin = async () => {
       );
     }
 
-    // 4. Input State
     return (
       <div className="w-full py-4">
         <div className="w-full relative mb-8">
@@ -195,9 +210,8 @@ const handleJoin = async () => {
             </p>
           )}
         </div>
-
         <button
-          onClick={handleJoin}
+          onClick={handleManualJoin}
           disabled={loading}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-500/30"
         >
@@ -220,11 +234,9 @@ const handleJoin = async () => {
       >
         <ArrowLeft size={20} /> Back
       </button>
-
       <h2 className="text-2xl font-bold mb-6">
         {isConnected ? "Connection Status" : "Receive File"}
       </h2>
-
       <div className="w-full bg-white p-6 rounded-2xl shadow-xl min-h-[380px] flex items-center justify-center">
         {renderCardContent()}
       </div>

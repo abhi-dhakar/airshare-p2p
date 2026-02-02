@@ -33,6 +33,7 @@ export default function SenderView() {
     transferStatus,
   } = useAppStore();
 
+  // Create a preview if the selected file is an image
   const filePreview = useMemo(() => {
     if (file && file.type.startsWith("image/")) {
       return URL.createObjectURL(file);
@@ -46,15 +47,18 @@ export default function SenderView() {
       socket.emit("create_room");
     }
 
+    // Room created by server
     socket.on("room_created", (id) => setRoomId(id));
 
-   socket.on("peer_joined", async () => {
-     setIsConnected(true);
-     setP2PStatus("connecting");
-     // Add 'await' (optional inside non-async callback, but good practice to acknowledge)
-     await rtcManager.initialize(useAppStore.getState().roomId, true);
-   });
+    // Receiver found the room and joined
+    socket.on("peer_joined", async () => {
+      setIsConnected(true);
+      setP2PStatus("connecting");
+      // Use the current roomId from the store to start WebRTC handshake
+      await rtcManager.initialize(useAppStore.getState().roomId, true);
+    });
 
+    // Handle WebRTC signaling messages
     socket.on("signal", (data) => rtcManager.handleSignal(data));
 
     return () => {
@@ -70,12 +74,10 @@ export default function SenderView() {
     reset();
   };
 
-  // 1. Just store the file, DON'T send yet
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile);
   };
 
-  // 2. New function to trigger send manually
   const handleSendFile = () => {
     if (file) {
       rtcManager.sendFile(file);
@@ -87,7 +89,7 @@ export default function SenderView() {
   };
 
   const renderCardContent = () => {
-    // A. Transferring
+    // 1. Transfer in progress
     if (transferStatus === "transferring") {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6">
@@ -100,7 +102,7 @@ export default function SenderView() {
       );
     }
 
-    // B. Completed
+    // 2. Transfer completed successfully
     if (transferStatus === "completed") {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6">
@@ -122,7 +124,7 @@ export default function SenderView() {
       );
     }
 
-    // C. File Selected (Ready to Send) - NEW STATE
+    // 3. Peer connected, waiting for sender to pick a file
     if (file && transferStatus === "idle") {
       return (
         <div className="flex flex-col items-center animate-fade-in w-full">
@@ -130,9 +132,7 @@ export default function SenderView() {
             Ready to Send
           </h3>
 
-          {/* File Preview Card */}
           <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl w-full mb-6 flex flex-col items-center relative">
-            {/* Close/Remove Button */}
             <button
               onClick={handleRemoveFile}
               className="absolute top-2 right-2 p-1 bg-gray-200 rounded-full hover:bg-gray-300 text-gray-600 transition"
@@ -140,7 +140,6 @@ export default function SenderView() {
               <X size={16} />
             </button>
 
-            {/* Icon or Image */}
             <div className="mb-3">
               {filePreview ? (
                 <img
@@ -155,7 +154,6 @@ export default function SenderView() {
               )}
             </div>
 
-            {/* Name & Size */}
             <p className="font-semibold text-gray-800 text-center break-all px-2">
               {file.name}
             </p>
@@ -164,7 +162,6 @@ export default function SenderView() {
             </p>
           </div>
 
-          {/* Send Button */}
           <button
             onClick={handleSendFile}
             className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition-transform hover:scale-[1.02]"
@@ -175,7 +172,7 @@ export default function SenderView() {
       );
     }
 
-    // D. Connected (No File Selected)
+    // 4. P2P Tunnel Established
     if (isConnected && p2pStatus === "connected") {
       return (
         <div className="w-full animate-fade-in">
@@ -187,13 +184,12 @@ export default function SenderView() {
               Select file to send
             </h3>
           </div>
-
           <FileDropzone onFileSelect={handleFileSelect} />
         </div>
       );
     }
 
-    // E. Connecting
+    // 5. Negotiating Handshake
     if (isConnected) {
       return (
         <div className="flex flex-col items-center animate-fade-in py-6">
@@ -204,12 +200,16 @@ export default function SenderView() {
       );
     }
 
-    // F. Waiting for Peer (QR Code)
+    // 6. Default State: Show QR and Code for Pairing
     return (
       <div className="flex flex-col items-center py-2">
         <div className="bg-white p-2 rounded-lg mb-6">
           {roomId ? (
-            <QRCode value={roomId} size={180} />
+            <QRCode
+              // Dynamically create a URL that opens the app and joins this room
+              value={`${window.location.origin}/?join=${roomId}`}
+              size={180}
+            />
           ) : (
             <div className="w-44 h-44 bg-gray-200 animate-pulse rounded" />
           )}
@@ -219,7 +219,7 @@ export default function SenderView() {
         </p>
         <div className="mt-6 flex items-center gap-2 text-gray-400 text-sm bg-gray-50 px-4 py-2 rounded-full">
           <Smartphone size={16} />
-          Scan with receiver device
+          Scan to connect instantly
         </div>
       </div>
     );
@@ -234,7 +234,6 @@ export default function SenderView() {
         <ArrowLeft size={20} /> Cancel
       </button>
 
-      {/* Header - Simple Title */}
       <div className="text-center mb-8 flex flex-col items-center w-full">
         <h2 className="text-2xl font-bold mb-2">
           {!isConnected
