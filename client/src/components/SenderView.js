@@ -16,6 +16,7 @@ import { socket } from "@/services/socket";
 import { rtcManager } from "@/services/webrtc";
 import ProgressRing from "./ProgressRing";
 import FileDropzone from "./FileDropzone";
+import NetworkBadge from "./NetworkBadge";
 
 export default function SenderView() {
   const {
@@ -31,6 +32,7 @@ export default function SenderView() {
     setP2PStatus,
     transferProgress,
     transferStatus,
+    connectionType,
   } = useAppStore();
 
   // Create a preview if the selected file is an image
@@ -179,6 +181,9 @@ export default function SenderView() {
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 text-green-600 bg-green-100 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
               <Lock size={12} /> Secure Connection
+            </div>
+            <div className="mb-4">
+              <NetworkBadge type={connectionType} />
             </div>
             <h3 className="text-xl font-bold text-gray-800">
               Select file to send

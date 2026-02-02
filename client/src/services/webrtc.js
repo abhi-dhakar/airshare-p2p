@@ -88,6 +88,8 @@ class WebRTCManager {
       useAppStore.getState().setP2PStatus("connected");
     };
 
+    this.startStatsPolling(); //add
+
     this.dataChannel.onmessage = (event) => {
       this.handleIncomingMessage(event.data);
     };
@@ -97,6 +99,34 @@ class WebRTCManager {
     };
   }
 
+  startStatsPolling() {
+    const { setConnectionType } = useAppStore.getState();
+
+    const interval = setInterval(async () => {
+      if (
+        !this.peerConnection ||
+        this.peerConnection.connectionState !== "connected"
+      ) {
+        clearInterval(interval);
+        return;
+      }
+
+      const stats = await this.peerConnection.getStats();
+      stats.forEach((report) => {
+        if (
+          report.type === "candidate-pair" &&
+          report.state === "succeeded" &&
+          report.nominated
+        ) {
+          const localCandidate = stats.get(report.localCandidateId);
+          if (localCandidate && localCandidate.candidateType) {
+            setConnectionType(localCandidate.candidateType);
+          }
+        }
+      });
+    }, 2000); // Check every 2 seconds
+  }
+  
   // --- SENDER LOGIC ---
   async sendFile(file) {
     const { setTransferStatus, setTransferProgress } = useAppStore.getState();

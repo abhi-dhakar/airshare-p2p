@@ -9,7 +9,8 @@ const useAppStore = create((set) => ({
   transferProgress: 0,
   transferStatus: "idle",
   receivedFile: null, // NEW: Stores { url, name, size }
-
+  connectionType: null, // 'host' | 'srflx' | 'relay'
+  setConnectionType: (type) => set({ connectionType: type }),
   // Actions
   setScreen: (screen) => set({ screen }),
   setFile: (file) => set({ file }),
@@ -32,6 +33,7 @@ const useAppStore = create((set) => ({
       transferProgress: 0,
       transferStatus: "idle",
       receivedFile: null,
+      connectionType: null,
     }),
 
   // Reset for next file
