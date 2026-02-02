@@ -253,3 +253,7 @@ class WebRTCManager {
 }
 
 export const rtcManager = new WebRTCManager();
+
+if (typeof window !== "undefined") {
+  window.rtcManager = rtcManager;
+}
