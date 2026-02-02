@@ -1,8 +1,8 @@
 import { socket } from "./socket";
 import useAppStore from "@/store/useAppStore";
 
-const CHUNK_SIZE = 64 * 1024; // Increase from 16KB to 64KB
-const MAX_BUFFER_AMOUNT = 1024 * 1024; // Increase threshold from 64KB to 1MB
+const CHUNK_SIZE = 256 * 1024; // 256KB chunks (Much faster than 64KB)
+const MAX_BUFFER_AMOUNT = 2 * 1024 * 1024; // 2MB Buffer (Keep the pipe full)
 
 class WebRTCManager {
   constructor() {
@@ -102,63 +102,56 @@ class WebRTCManager {
     const { setTransferStatus, setTransferProgress } = useAppStore.getState();
     setTransferStatus("transferring");
 
-    const metadata = {
-      type: "metadata",
-      name: file.name,
-      size: file.size,
-      fileType: file.type,
-    };
-
-    try {
-      this.dataChannel.send(JSON.stringify(metadata));
-    } catch (e) {
-      console.error("Failed to send metadata", e);
-      return;
-    }
+    // Send Metadata
+    this.dataChannel.send(
+      JSON.stringify({
+        type: "metadata",
+        name: file.name,
+        size: file.size,
+        fileType: file.type,
+      }),
+    );
 
     let offset = 0;
 
-    const readSlice = () => {
+    const processNextChunk = async () => {
+      // Check if we are done
       if (offset >= file.size) {
         this.dataChannel.send("EOF");
         setTransferStatus("completed");
         return;
       }
 
+      // BACKPRESSURE: If buffer is full, wait.
       if (this.dataChannel.bufferedAmount > MAX_BUFFER_AMOUNT) {
         this.dataChannel.onbufferedamountlow = () => {
           this.dataChannel.onbufferedamountlow = null;
-          readSlice();
+          processNextChunk();
         };
         return;
       }
 
-      const slice = file.slice(offset, offset + CHUNK_SIZE);
-      const reader = new FileReader();
+      // Read chunk using modern Blob.arrayBuffer() - Faster than FileReader
+      const chunk = file.slice(offset, offset + CHUNK_SIZE);
+      try {
+        const buffer = await chunk.arrayBuffer();
+        this.dataChannel.send(buffer);
 
-      reader.onload = (e) => {
-        if (!this.dataChannel || this.dataChannel.readyState !== "open") return;
+        offset += buffer.byteLength;
 
-        try {
-          this.dataChannel.send(e.target.result);
-          offset += e.target.result.byteLength;
+        // Update UI Progress
+        const progress = Math.round((offset / file.size) * 100);
+        setTransferProgress(progress);
 
-          const progress = Math.min(
-            100,
-            Math.round((offset / file.size) * 100),
-          );
-          setTransferProgress(progress);
-          readSlice();
-        } catch (error) {
-          console.error("Send Error:", error);
-          setTimeout(readSlice, 100);
-        }
-      };
-
-      reader.readAsArrayBuffer(slice);
+        // Recursive call for next chunk
+        processNextChunk();
+      } catch (err) {
+        console.error("Transfer Error:", err);
+        setTimeout(processNextChunk, 100);
+      }
     };
 
-    readSlice();
+    processNextChunk();
   }
 
   // --- RECEIVER LOGIC ---
