@@ -1,8 +1,8 @@
 import { socket } from "./socket";
 import useAppStore from "@/store/useAppStore";
 
-const CHUNK_SIZE = 16 * 1024; // 16KB
-const MAX_BUFFER_AMOUNT = 64 * 1024; // 64KB
+const CHUNK_SIZE = 64 * 1024; // Increase from 16KB to 64KB
+const MAX_BUFFER_AMOUNT = 1024 * 1024; // Increase threshold from 64KB to 1MB
 
 class WebRTCManager {
   constructor() {
